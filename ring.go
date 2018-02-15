@@ -3,8 +3,10 @@ package ring
 import (
 	"crypto/elliptic"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"io"
+	"math/big"
 
 	"github.com/pkg/errors"
 )
@@ -56,7 +58,7 @@ type Signature struct {
 //	* Let r be the index of the actual signer in the ring
 //	* Randomly choose k in [1:N-1]
 //	* Compute e(r+1 % R) = H(m || k*G)
-//	* for i := r+1 % R; i != r; i++:
+//	* for i := r+1 % R; i != r; i++%R:
 //		* Randomly choose s(i) in [1:N-1]
 //		* Compute e(i+1 % R) = H(m || s(i)*G + e(i)*P(i))
 //	* Compute s(r) = k - e(r)*x(r)
@@ -83,7 +85,57 @@ func (sk PrivateKey) Sign(
 		rand = crand.Reader
 	}
 
-	return nil, nil
+	es := make([][]byte, len(ringKeys))
+	ss := make([][]byte, len(ringKeys))
+
+	curve := elliptic.P384()
+	r := len(ringKeys)
+
+	// Initialize the ring.
+	k, err := randomParam(curve, rand)
+	if err != nil {
+		return nil, err
+	}
+
+	x, y := curve.ScalarBaseMult(k)
+	es[(signerIndex+1)%r] = hash(append(message, elliptic.Marshal(curve, x, y)...))
+
+	// Iterate over the whole ring.
+	for i := (signerIndex + 1) % r; i != signerIndex; i = (i + 1) % r {
+		s, err := randomParam(curve, rand)
+		if err != nil {
+			return nil, err
+		}
+
+		ss[i] = s
+
+		x1, y1 := curve.ScalarBaseMult(ss[i])
+		px, py := elliptic.Unmarshal(curve, ringKeys[i])
+		x2, y2 := curve.ScalarMult(px, py, es[i])
+		x, y = curve.Add(x1, y1, x2, y2)
+		es[(i+1)%r] = hash(append(message, elliptic.Marshal(curve, x, y)...))
+	}
+
+	// Close the ring.
+	valK := new(big.Int)
+	valK.SetBytes(k)
+
+	valE := new(big.Int)
+	valE.SetBytes(es[signerIndex])
+
+	valX := new(big.Int)
+	valX.SetBytes(sk)
+
+	valS := valK.Sub(valK, valE.Mul(valE, valX))
+	ss[signerIndex] = valS.Bytes()
+
+	sig := &Signature{
+		ring: ringKeys,
+		e:    es[0],
+		s:    ss,
+	}
+
+	return sig, nil
 }
 
 // randomParam generates a random scalar suitable
@@ -99,6 +151,12 @@ func randomParam(curve elliptic.Curve, rand io.Reader) ([]byte, error) {
 	}
 
 	return k, nil
+}
+
+// hash hashes the given bytes.
+func hash(b []byte) []byte {
+	h := sha256.Sum256(b)
+	return h[:]
 }
 
 // Verifying algorithm:

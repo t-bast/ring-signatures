@@ -72,8 +72,8 @@ func TestGenerate(t *testing.T) {
 
 func TestSign(t *testing.T) {
 	alicePub, alicePriv := ring.Generate(nil)
-	bobPub, _ := ring.Generate(nil)
-	carolPub, _ := ring.Generate(nil)
+	bobPub, bobPriv := ring.Generate(nil)
+	carolPub, carolPriv := ring.Generate(nil)
 
 	t.Run("Rejects empty messages", func(t *testing.T) {
 		_, err := alicePriv.Sign(nil, nil, []ring.PublicKey{alicePub, bobPub, carolPub}, 0)
@@ -91,5 +91,16 @@ func TestSign(t *testing.T) {
 
 		_, err = alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub, bobPub}, 2)
 		assert.EqualError(t, err, ring.ErrInvalidSignerIndex.Error())
+	})
+
+	t.Run("Sign without error", func(t *testing.T) {
+		ringKeys := []ring.PublicKey{alicePub, bobPub, carolPub}
+		signers := []ring.PrivateKey{alicePriv, bobPriv, carolPriv}
+
+		for i, signer := range signers {
+			sig, err := signer.Sign(nil, []byte("Big Brother Is Watching"), ringKeys, i)
+			assert.NoError(t, err, "signer.Sign()")
+			assert.NotNil(t, sig, "sig")
+		}
 	})
 }
