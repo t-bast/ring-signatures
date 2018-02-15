@@ -69,3 +69,27 @@ func TestGenerate(t *testing.T) {
 		assert.EqualValues(t, sk, decoded, "Decoded Private Key")
 	})
 }
+
+func TestSign(t *testing.T) {
+	alicePub, alicePriv := ring.Generate(nil)
+	bobPub, _ := ring.Generate(nil)
+	carolPub, _ := ring.Generate(nil)
+
+	t.Run("Rejects empty messages", func(t *testing.T) {
+		_, err := alicePriv.Sign(nil, nil, []ring.PublicKey{alicePub, bobPub, carolPub}, 0)
+		assert.EqualError(t, err, ring.ErrEmptyMessage.Error())
+	})
+
+	t.Run("Rejects small ring", func(t *testing.T) {
+		_, err := alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub}, 0)
+		assert.EqualError(t, err, ring.ErrRingTooSmall.Error())
+	})
+
+	t.Run("Rejects invalid index", func(t *testing.T) {
+		_, err := alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub, bobPub}, -1)
+		assert.EqualError(t, err, ring.ErrInvalidSignerIndex.Error())
+
+		_, err = alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub, bobPub}, 2)
+		assert.EqualError(t, err, ring.ErrInvalidSignerIndex.Error())
+	})
+}
