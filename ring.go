@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"bytes"
 	"crypto/elliptic"
 	crand "crypto/rand"
 	"crypto/sha256"
@@ -74,9 +75,11 @@ func (sk PrivateKey) Sign(
 	if len(message) == 0 {
 		return nil, ErrEmptyMessage
 	}
+
 	if signerIndex < 0 || len(ringKeys) <= signerIndex {
 		return nil, ErrInvalidSignerIndex
 	}
+
 	if len(ringKeys) < 2 {
 		return nil, ErrRingTooSmall
 	}
@@ -117,15 +120,9 @@ func (sk PrivateKey) Sign(
 	}
 
 	// Close the ring.
-	valK := new(big.Int)
-	valK.SetBytes(k)
-
-	valE := new(big.Int)
-	valE.SetBytes(es[signerIndex])
-
-	valX := new(big.Int)
-	valX.SetBytes(sk)
-
+	valK := new(big.Int).SetBytes(k)
+	valE := new(big.Int).SetBytes(es[signerIndex])
+	valX := new(big.Int).SetBytes(sk)
 	valS := valK.Sub(valK, valE.Mul(valE, valX))
 	ss[signerIndex] = valS.Bytes()
 
@@ -141,16 +138,16 @@ func (sk PrivateKey) Sign(
 // randomParam generates a random scalar suitable
 // for curve multiplication.
 func randomParam(curve elliptic.Curve, rand io.Reader) ([]byte, error) {
-	N := curve.Params().N
-	bitSize := N.BitLen()
-	byteLen := (bitSize + 7) >> 3
-	k := make([]byte, byteLen)
-	_, err := io.ReadFull(rand, k)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+	for {
+		r, err := crand.Int(rand, curve.Params().N)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
 
-	return k, nil
+		if r.Sign() == 1 {
+			return r.Bytes(), nil
+		}
+	}
 }
 
 // hash hashes the given bytes.
@@ -165,3 +162,35 @@ func hash(b []byte) []byte {
 //	* for i := 0; i < R; i++:
 //		* ee = H(m || s(i)*G + ee*P(i))
 //	* If ee = e, signature is valid. Otherwise it's invalid.
+
+// Verify verifies the validity of the message signature.
+// It does not detail why the signature validation failed.
+func (sig *Signature) Verify(message []byte) bool {
+	if len(sig.ring) < 2 {
+		return false
+	}
+
+	if len(sig.s) != len(sig.ring) {
+		return false
+	}
+
+	if len(sig.e) == 0 {
+		return false
+	}
+
+	curve := elliptic.P384()
+
+	e := make([]byte, len(sig.e))
+	copy(e, sig.e)
+
+	for i := 0; i < len(sig.ring); i++ {
+		x1, y1 := curve.ScalarBaseMult(sig.s[i])
+		px, py := elliptic.Unmarshal(curve, sig.ring[i])
+		x2, y2 := curve.ScalarMult(px, py, e)
+
+		x, y := curve.Add(x1, y1, x2, y2)
+		e = hash(append(message, elliptic.Marshal(curve, x, y)...))
+	}
+
+	return bytes.Equal(e, sig.e)
+}

@@ -97,10 +97,13 @@ func TestSign(t *testing.T) {
 		ringKeys := []ring.PublicKey{alicePub, bobPub, carolPub}
 		signers := []ring.PrivateKey{alicePriv, bobPriv, carolPriv}
 
+		message := []byte("Big Brother Is Watching")
 		for i, signer := range signers {
-			sig, err := signer.Sign(nil, []byte("Big Brother Is Watching"), ringKeys, i)
+			sig, err := signer.Sign(nil, message, ringKeys, i)
 			assert.NoError(t, err, "signer.Sign()")
-			assert.NotNil(t, sig, "sig")
+			assert.NotNil(t, sig, "Signature should not be empty")
+
+			assert.True(t, sig.Verify(message), "Signature should be valid")
 		}
 	})
 }
