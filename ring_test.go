@@ -1,4 +1,4 @@
-package ring_test
+package ring
 
 import (
 	"crypto/elliptic"
@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	ring "github.com/t-bast/ring-signatures"
 )
 
 func TestElliptic(t *testing.T) {
@@ -112,7 +111,7 @@ func TestBigNumbers(t *testing.T) {
 }
 
 func TestGenerate(t *testing.T) {
-	pk, sk := ring.Generate(nil)
+	pk, sk := Generate(nil)
 
 	t.Run("Correctly generates keys", func(t *testing.T) {
 		assert.NotNil(t, pk, "Public Key")
@@ -120,50 +119,50 @@ func TestGenerate(t *testing.T) {
 	})
 
 	t.Run("Encodes and decodes public key", func(t *testing.T) {
-		encoded := ring.ConfigEncodeKey(pk)
+		encoded := ConfigEncodeKey(pk)
 		assert.NotNil(t, encoded, "Encoded Public Key")
 
-		decoded, err := ring.ConfigDecodeKey(encoded)
-		assert.NoError(t, err, "ring.ConfigDecodeKey()")
+		decoded, err := ConfigDecodeKey(encoded)
+		assert.NoError(t, err, "ConfigDecodeKey()")
 		assert.EqualValues(t, pk, decoded, "Decoded Public Key")
 	})
 
 	t.Run("Encodes and decodes private key", func(t *testing.T) {
-		encoded := ring.ConfigEncodeKey(sk)
+		encoded := ConfigEncodeKey(sk)
 		assert.NotNil(t, encoded, "Encoded Private Key")
 
-		decoded, err := ring.ConfigDecodeKey(encoded)
-		assert.NoError(t, err, "ring.ConfigDecodeKey()")
+		decoded, err := ConfigDecodeKey(encoded)
+		assert.NoError(t, err, "ConfigDecodeKey()")
 		assert.EqualValues(t, sk, decoded, "Decoded Private Key")
 	})
 }
 
 func TestSign(t *testing.T) {
-	alicePub, alicePriv := ring.Generate(nil)
-	bobPub, bobPriv := ring.Generate(nil)
-	carolPub, carolPriv := ring.Generate(nil)
+	alicePub, alicePriv := Generate(nil)
+	bobPub, bobPriv := Generate(nil)
+	carolPub, carolPriv := Generate(nil)
 
 	t.Run("Rejects empty messages", func(t *testing.T) {
-		_, err := alicePriv.Sign(nil, nil, []ring.PublicKey{alicePub, bobPub, carolPub}, 0)
-		assert.EqualError(t, err, ring.ErrEmptyMessage.Error())
+		_, err := alicePriv.Sign(nil, nil, []PublicKey{alicePub, bobPub, carolPub}, 0)
+		assert.EqualError(t, err, ErrEmptyMessage.Error())
 	})
 
 	t.Run("Rejects small ring", func(t *testing.T) {
-		_, err := alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub}, 0)
-		assert.EqualError(t, err, ring.ErrRingTooSmall.Error())
+		_, err := alicePriv.Sign(nil, []byte("hello"), []PublicKey{alicePub}, 0)
+		assert.EqualError(t, err, ErrRingTooSmall.Error())
 	})
 
 	t.Run("Rejects invalid index", func(t *testing.T) {
-		_, err := alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub, bobPub}, -1)
-		assert.EqualError(t, err, ring.ErrInvalidSignerIndex.Error())
+		_, err := alicePriv.Sign(nil, []byte("hello"), []PublicKey{alicePub, bobPub}, -1)
+		assert.EqualError(t, err, ErrInvalidSignerIndex.Error())
 
-		_, err = alicePriv.Sign(nil, []byte("hello"), []ring.PublicKey{alicePub, bobPub}, 2)
-		assert.EqualError(t, err, ring.ErrInvalidSignerIndex.Error())
+		_, err = alicePriv.Sign(nil, []byte("hello"), []PublicKey{alicePub, bobPub}, 2)
+		assert.EqualError(t, err, ErrInvalidSignerIndex.Error())
 	})
 
 	t.Run("Sign without error", func(t *testing.T) {
-		ringKeys := []ring.PublicKey{alicePub, bobPub, carolPub}
-		signers := []ring.PrivateKey{alicePriv, bobPriv, carolPriv}
+		ringKeys := []PublicKey{alicePub, bobPub, carolPub}
+		signers := []PrivateKey{alicePriv, bobPriv, carolPriv}
 
 		message := []byte("Big Brother Is Watching")
 		for i, signer := range signers {
@@ -173,5 +172,54 @@ func TestSign(t *testing.T) {
 
 			assert.True(t, sig.Verify(message), "Signature should be valid")
 		}
+	})
+}
+
+func TestVerify(t *testing.T) {
+	alicePub, alicePriv := Generate(nil)
+	bobPub, _ := Generate(nil)
+
+	t.Run("Empty signature", func(t *testing.T) {
+		sig := &Signature{}
+		assert.False(t, sig.Verify([]byte("hello")))
+	})
+
+	t.Run("Small ring", func(t *testing.T) {
+		sig := &Signature{ring: []PublicKey{alicePub}}
+		assert.False(t, sig.Verify([]byte("you again?")))
+	})
+
+	t.Run("Missing e", func(t *testing.T) {
+		sig := &Signature{
+			ring: []PublicKey{alicePub, bobPub},
+			s:    make([][]byte, 2),
+		}
+		assert.False(t, sig.Verify([]byte("you again?")))
+	})
+
+	t.Run("Invalid format", func(t *testing.T) {
+		sig := &Signature{
+			ring: []PublicKey{alicePub, bobPub},
+			e:    []byte("who's watching?"),
+			s:    make([][]byte, 3),
+		}
+		assert.False(t, sig.Verify([]byte("you again?")))
+	})
+
+	t.Run("Message does not match", func(t *testing.T) {
+		message := []byte("very secret much hidden")
+		sig, err := alicePriv.Sign(nil, message, []PublicKey{alicePub, bobPub}, 0)
+
+		assert.NoError(t, err)
+		assert.True(t, sig.Verify(message))
+		assert.False(t, sig.Verify([]byte("not hidden very insecure")))
+	})
+
+	t.Run("Invalid signer index", func(t *testing.T) {
+		message := []byte("very secret much hidden")
+		sig, err := alicePriv.Sign(nil, message, []PublicKey{alicePub, bobPub}, 1)
+
+		assert.NoError(t, err)
+		assert.False(t, sig.Verify(message))
 	})
 }
