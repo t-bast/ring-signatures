@@ -138,6 +138,10 @@ func (sk PrivateKey) Sign(
 		add := new(big.Int).Mul(valE, curve.Params().N)
 		valS = valS.Add(valS, add)
 
+		// We need to take it modulo N otherwise it's easy to figure out who the signer is,
+		// you just have to look at the only value that is bigger than N in the s array.
+		_, valS = new(big.Int).DivMod(valS, curve.Params().N, new(big.Int))
+
 		if valS.Sign() == 0 {
 			// Tough luck...
 			return nil, errors.New("could not produce ring signature")
