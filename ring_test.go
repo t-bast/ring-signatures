@@ -3,6 +3,7 @@ package ring_test
 import (
 	"crypto/elliptic"
 	crand "crypto/rand"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,73 @@ func TestElliptic(t *testing.T) {
 		px, py := c.ScalarBaseMult(sk)
 		assert.Equal(t, x, px, "x")
 		assert.Equal(t, y, py, "y")
+	})
+
+	t.Run("Curve order addition wraps around", func(t *testing.T) {
+		c := elliptic.P384()
+		k := new(big.Int).SetUint64(5)
+		kn := new(big.Int).Add(k, c.Params().N)
+
+		x1, y1 := c.ScalarBaseMult(k.Bytes())
+		x2, y2 := c.ScalarBaseMult(kn.Bytes())
+
+		assert.Equal(t, x1, x2, "x")
+		assert.Equal(t, y1, y2, "y")
+	})
+}
+
+func TestBigNumbers(t *testing.T) {
+	t.Run("Positive big number is encoded in big-endian", func(t *testing.T) {
+		encoded := new(big.Int).SetInt64(1<<3 + 1<<4 + 1<<5 + 1<<8 + 1<<10).Bytes()
+		assert.Len(t, encoded, 2)
+		assert.Equal(t, byte(0x05), encoded[0])
+		assert.Equal(t, byte(0x38), encoded[1])
+	})
+
+	t.Run("Negative big number encodes the absolute value in big-endian", func(t *testing.T) {
+		b := new(big.Int).SetInt64(-(1<<3 + 1<<4 + 1<<5 + 1<<8 + 1<<10))
+		assert.Equal(t, -1, b.Sign())
+
+		encoded := b.Bytes()
+		assert.Len(t, encoded, 2)
+		assert.Equal(t, byte(0x05), encoded[0])
+		assert.Equal(t, byte(0x38), encoded[1])
+
+		decoded := new(big.Int).SetBytes(encoded)
+		assert.Equal(t, 1, decoded.Sign())
+	})
+
+	t.Run("Encode sign manually", func(t *testing.T) {
+		b := new(big.Int).SetInt64(-(1<<3 + 1<<4 + 1<<5 + 1<<8 + 1<<10))
+		assert.Equal(t, -1, b.Sign())
+
+		encoded := b.Bytes()
+		encoded[0] |= 1 << 7
+		assert.Equal(t, byte(0x85), encoded[0])
+	})
+
+	t.Run("Multiple additions to bring back to positive values", func(t *testing.T) {
+		n := new(big.Int).SetInt64(30)
+		k := new(big.Int).SetInt64(25)
+		e := new(big.Int).SetInt64(20)
+		x := new(big.Int).SetInt64(21)
+
+		s := k.Sub(k, e.Mul(e, x))
+		assert.Equal(t, -1, s.Sign(), "Negative")
+		assert.Equal(t, "-395", s.String())
+
+		iter := 0
+		for {
+			if s.Sign() == 1 {
+				break
+			}
+
+			s = s.Add(s, n)
+			iter++
+		}
+
+		assert.Equal(t, "25", s.String())
+		assert.Equal(t, 14, iter, "Number of iterations")
 	})
 }
 

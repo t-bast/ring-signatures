@@ -95,6 +95,7 @@ func (sk PrivateKey) Sign(
 	r := len(ringKeys)
 
 	// Initialize the ring.
+
 	k, err := randomParam(curve, rand)
 	if err != nil {
 		return nil, err
@@ -104,6 +105,7 @@ func (sk PrivateKey) Sign(
 	es[(signerIndex+1)%r] = hash(append(message, elliptic.Marshal(curve, x, y)...))
 
 	// Iterate over the whole ring.
+
 	for i := (signerIndex + 1) % r; i != signerIndex; i = (i + 1) % r {
 		s, err := randomParam(curve, rand)
 		if err != nil {
@@ -120,10 +122,28 @@ func (sk PrivateKey) Sign(
 	}
 
 	// Close the ring.
+
 	valK := new(big.Int).SetBytes(k)
 	valE := new(big.Int).SetBytes(es[signerIndex])
 	valX := new(big.Int).SetBytes(sk)
-	valS := valK.Sub(valK, valE.Mul(valE, valX))
+	valS := new(big.Int).Sub(valK, new(big.Int).Mul(valE, valX))
+
+	// It's highly likely that s will end up negative.
+	// This is bad because go big numbers drop the sign and encode the absolute
+	// value when getting the bytes.
+	// We leverage the fact that since N is the order of the curve, (x+N)*P=x*P
+	// to get a positive value that will have the same impact on elliptic curve
+	// operations.
+	if valS.Sign() == -1 {
+		add := new(big.Int).Mul(valE, curve.Params().N)
+		valS = valS.Add(valS, add)
+
+		if valS.Sign() == 0 {
+			// Tough luck...
+			return nil, errors.New("could not produce ring signature")
+		}
+	}
+
 	ss[signerIndex] = valS.Bytes()
 
 	sig := &Signature{
@@ -166,6 +186,10 @@ func hash(b []byte) []byte {
 // Verify verifies the validity of the message signature.
 // It does not detail why the signature validation failed.
 func (sig *Signature) Verify(message []byte) bool {
+	if sig == nil {
+		return false
+	}
+
 	if len(sig.ring) < 2 {
 		return false
 	}
