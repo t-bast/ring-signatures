@@ -161,7 +161,7 @@ func verify(c *cli.Context) error {
 
 	valid := sig.Verify([]byte(m))
 	if !valid {
-		cli.NewExitError("invalid signature", 1)
+		return cli.NewExitError("invalid signature", 1)
 	}
 
 	fmt.Println("Signature is valid.")
