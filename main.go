@@ -1,10 +1,17 @@
-// Package ring allows you to produce and verify ring signatures.
-package ring
+// Package main allows you to produce and verify ring signatures.
+package main
 
 import (
-	"fmt"
+	"os"
+
+	"github.com/urfave/cli"
 )
 
 func main() {
-	fmt.Println("Work in progress...")
+	app := cli.NewApp()
+	app.Name = "ring-signatures"
+	app.Usage = "generate and verify ring signatures."
+	app.Version = "0.1.0"
+
+	app.Run(os.Args)
 }
