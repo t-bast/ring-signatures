@@ -19,16 +19,23 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:    "generate",
-			Aliases: []string{"g"},
-			Usage:   "generate a public and private key",
-			Action:  generate,
+			Name:      "generate",
+			Aliases:   []string{"g"},
+			Usage:     "generate a public and private key",
+			UsageText: "ring-signatures generate",
+			Action:    generate,
 		},
 		{
 			Name:    "sign",
 			Aliases: []string{"s"},
 			Usage:   "sign a message with a ring",
-			Action:  sign,
+			UsageText: "Alice has private key \"Pr1v4T3k3y\", public key \"4l1c3\" and wants to sign the message \"hello!\".\n" +
+				"   She wants to use Bob and Carol's public keys to form a ring.\n" +
+				"   Bob's public key is \"b0b\" and Carol's public key is \"c4r0l\".\n" +
+				"   Alice can form the ring [c4r0l, 4l1c3, b0b] and hide herself in that ring with the following command:\n" +
+				"   ring-signatures sign --message \"hello!\" --private-key 4l1c3" +
+				" --ring-index 1 --ring c4r0l --ring 4l1c3 --ring b0b",
+			Action: sign,
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "message, m",
@@ -49,10 +56,11 @@ func main() {
 			},
 		},
 		{
-			Name:    "verify",
-			Aliases: []string{"v"},
-			Usage:   "verify a message signature",
-			Action:  verify,
+			Name:      "verify",
+			Aliases:   []string{"v"},
+			Usage:     "verify a message signature",
+			UsageText: "ring-signatures verify --message \"hello!\" --signature s1GN4tUr3",
+			Action:    verify,
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "message, m",
