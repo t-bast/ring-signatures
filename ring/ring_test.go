@@ -4,6 +4,7 @@ import (
 	"crypto/elliptic"
 	crand "crypto/rand"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -223,3 +224,52 @@ func TestVerify(t *testing.T) {
 		assert.False(t, sig.Verify(message))
 	})
 }
+
+// GenerateKeys generates a set of keys for benchmarks.
+func GenerateKeys(count int) ([]PublicKey, []PrivateKey) {
+	pubKeys := make([]PublicKey, count)
+	privKeys := make([]PrivateKey, count)
+	for i := 0; i < count; i++ {
+		pub, priv := Generate(nil)
+		pubKeys[i] = pub
+		privKeys[i] = priv
+	}
+	return pubKeys, privKeys
+}
+
+func benchmarkSign(ringSize int, b *testing.B) {
+	pubKeys, privKeys := GenerateKeys(ringSize)
+	i := rand.Intn(ringSize)
+	message := []byte("Benchmark me like the french people do.")
+	for n := 0; n < b.N; n++ {
+		_, err := privKeys[i].Sign(nil, message, pubKeys, i)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkSign3(b *testing.B)   { benchmarkSign(3, b) }
+func BenchmarkSign10(b *testing.B)  { benchmarkSign(10, b) }
+func BenchmarkSign100(b *testing.B) { benchmarkSign(100, b) }
+
+func benchmarkVerify(ringSize int, b *testing.B) {
+	pubKeys, privKeys := GenerateKeys(ringSize)
+	i := rand.Intn(ringSize)
+	message := []byte("Benchmark me like the french people do.")
+	sig, err := privKeys[i].Sign(nil, message, pubKeys, i)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for n := 0; n < b.N; n++ {
+		valid := sig.Verify(message)
+		if !valid {
+			b.Fatalf("Signature verification failed.")
+		}
+	}
+}
+
+func BenchmarkVerify3(b *testing.B)   { benchmarkVerify(3, b) }
+func BenchmarkVerify10(b *testing.B)  { benchmarkVerify(10, b) }
+func BenchmarkVerify100(b *testing.B) { benchmarkVerify(100, b) }
