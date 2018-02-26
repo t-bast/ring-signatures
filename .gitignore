@@ -15,3 +15,7 @@
 
 # Dep vendor directory
 vendor/
+
+# Compiled executable
+ring-signatures
+bin/
